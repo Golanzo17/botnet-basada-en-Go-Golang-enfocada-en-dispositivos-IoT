@@ -1,6 +1,6 @@
 # **Análisis empírico comparativo entre C y Go en entornos IoT restringidos: arquitecturas de referencia en sistemas embebidos**
 
-Gonzalo M. Fernández Gómez, \[Nombre y apellido de los intGonzalo M. Fernández Gómezegrantes\]¹  
+Gonzalo M. Fernández Gómez, Erck Luciano Andrés, Juan Roman Zacarias, Fernando Antonio Arce Obregon¹  
 Fac. de Ciencias Exactas Naturales y Agrimensura, Universidad Nacional del Nordeste, Corrientes  
 \[correos electrónicos de los integrantes\]@comunidad.unne.edu.ar
 
