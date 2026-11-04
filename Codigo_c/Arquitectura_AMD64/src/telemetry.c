@@ -140,8 +140,21 @@ void telemetry_print_final_summary(const telemetry_t *t, int heap_target_mb,
     printf("  Comportamiento frente a RAM:   ESTABLE (Sin OOM Stop)\n");
     printf("=================================================================\n");
 
-    // Guardar también en archivo de texto para trazabilidad experimental
-    FILE *f = fopen("benchmark_resultado.txt", "w");
+    // Guardar también en archivo de texto para trazabilidad experimental.
+    // Si se montó un volumen con -v "$(pwd):/app/host", se guarda directamente en la máquina anfitriona/VM.
+    const char *out_path = "benchmark_resultado.txt";
+    FILE *f = fopen("host/benchmark_resultado.txt", "w");
+    if (f) {
+        out_path = "benchmark_resultado.txt (guardado directamente en tu carpeta de la VM)";
+    } else {
+        f = fopen("out/benchmark_resultado.txt", "w");
+        if (f) {
+            out_path = "out/benchmark_resultado.txt";
+        } else {
+            f = fopen("benchmark_resultado.txt", "w");
+        }
+    }
+
     if (f) {
         fprintf(f, "RESUMEN FINAL CONSOLIDADO DEL BENCHMARK (C - AMD64)\n");
         fprintf(f, "Tiempo_Carga_s: %.1f\n", duration_sec);
@@ -157,6 +170,6 @@ void telemetry_print_final_summary(const telemetry_t *t, int heap_target_mb,
         fprintf(f, "Trafico_Total_MB: %.2f\n", mb_tx);
         fprintf(f, "Estado: ESTABLE_SIN_OOM\n");
         fclose(f);
-        printf("[+] Resultados persistidos en disco en: benchmark_resultado.txt\n");
+        printf("[+] %s\n", out_path);
     }
 }
