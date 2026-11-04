@@ -7,8 +7,8 @@
 # ============================================================================
 
 CROSS_COMPILE ?= arm-linux-gnueabihf-
-CC            ?= $(CROSS_COMPILE)gcc
-STRIP         ?= $(CROSS_COMPILE)strip
+CC             = $(CROSS_COMPILE)gcc
+STRIP          = $(CROSS_COMPILE)strip
 
 # Detección de arquitectura del compilador
 ARCH_FLAGS    ?= -march=armv7-a -mfloat-abi=hard -mfpu=vfpv3-d16

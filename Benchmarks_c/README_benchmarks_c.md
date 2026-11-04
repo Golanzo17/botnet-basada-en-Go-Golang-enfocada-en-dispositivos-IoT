@@ -159,7 +159,7 @@ chmod +x ejecutar_prueba_c.sh
    ```
    *(Genera automáticamente: `Benchmarks_c/ARMV7_128mb/ARMV7_128mb_log_num_1.csv`)*
 
-> **Nota sobre identificadores aceptados:** Además de `"bot_amd64"`, `"bot_armv7"` y `"bot_mips"`, el primer argumento también acepta los nombres de binarios compilados (`"cliente_c"`, `"cliente_c_armv7"`, `"cliente_c_mips"`) o el nombre de la arquitectura (`"amd64"`, `"armv7"`, `"mips"`). Los límites de memoria válidos son `"32"`, `"64"` y `"128"`.
+> **Nota sobre identificadores aceptados:** Además de `"bot_amd64"`, `"bot_armv7"` y `"bot_mips"`, el primer argumento también acepta los nombres de binarios compilados (`"cliente_c"`, `"cliente_c_armv7"`, `"cliente_c_mips"`) o el nombre de la arquitectura (`"amd64"`, `"armv7"`, `"mips"`). Los límites de memoria válidos son potencias de 2 hasta $2^9$ (`"8"`, `"16"`, `"32"`, `"64"`, `"128"`, `"256"`, `"512"` MB).
 
 ---
 

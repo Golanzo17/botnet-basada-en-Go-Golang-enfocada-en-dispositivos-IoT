@@ -44,8 +44,8 @@ static void *worker_thread_func(void *arg) {
     int iter = 0;
 
     while (*keep_running) {
-        // Instrumentación de Métrica 3 (UCA): inicio de unidad de trabajo concurrente activa
-        long cur_uca = atomic_fetch_add(&telemetry->uca_active, 1) + 1;
+        // Instrumentación de Métrica 3 (UCA): inicio de unidades de trabajo concurrentes activas
+        long cur_uca = atomic_fetch_add(&telemetry->uca_active, slots) + slots;
         telemetry_update_uca_max(telemetry, cur_uca);
 
         // A. ASIGNACIÓN Y LIBERACIÓN DINÁMICA MANUAL
@@ -83,8 +83,8 @@ static void *worker_thread_func(void *arg) {
                                  (const uint8_t *)payload_str, (size_t)payload_len,
                                  telemetry);
 
-        // Fin del ciclo activo de esta unidad concurrente antes de la pausa
-        atomic_fetch_sub(&telemetry->uca_active, 1);
+        // Fin del ciclo activo de estas unidades concurrentes antes de la pausa
+        atomic_fetch_sub(&telemetry->uca_active, slots);
 
         // E. PAUSA DE CICLO
         if (cfg->worker_delay_us > 0) {
@@ -115,7 +115,7 @@ int worker_pool_start(worker_pool_t *pool, const Config *cfg,
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 128 * 1024);
+    pthread_attr_setstacksize(&attr, 64 * 1024);
 
     int base_slots = cfg->simulated_slots / cfg->num_workers;
     int remainder  = cfg->simulated_slots % cfg->num_workers;

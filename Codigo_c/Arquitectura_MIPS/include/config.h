@@ -33,8 +33,8 @@
 /** Tamaño del buffer de red por conexión (en bytes). */
 #define BUFFER_SIZE         4096
 
-/** Tamaño de la pila por hilo worker (128 KB), explícito para MIPS. */
-#define WORKER_STACK_SIZE   (128 * 1024)
+/** Tamaño de la pila por hilo worker (64 KB), explícito para MIPS 32-bit. */
+#define WORKER_STACK_SIZE   (64 * 1024)
 
 /* -------------------------------------------------------------------------
  * Intervalos de tiempo (en segundos)

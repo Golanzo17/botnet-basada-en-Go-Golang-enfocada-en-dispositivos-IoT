@@ -62,7 +62,7 @@ print_usage() {
     echo -e "       - ARMV7 : \"bot_armv7\", \"cliente_c_armv7\", \"armv7\""
     echo -e "       - MIPS  : \"bot_mips\", \"cliente_c_mips\", \"mips\""
     echo -e "  2. ${BOLD}cantidad_de_memoria${NC}        : Límite de memoria RAM en MB:"
-    echo -e "       - Valores admitidos: \"32\", \"64\", \"128\""
+    echo -e "       - Valores admitidos: \"8\", \"16\", \"32\", \"64\", \"128\", \"256\", \"512\""
     echo -e ""
     echo -e "Ejemplos:"
     echo -e "  ./ejecutar_prueba_c.sh \"bot_amd64\" \"32\""
@@ -192,14 +192,14 @@ case "${BOT_LOWER}" in
         ARCH="AMD64"
         ARCH_DIR="${REPO_ROOT}/Codigo_c/Arquitectura_AMD64"
         IMAGE_NAME="cliente_c_amd64_img:latest"
-        CONTAINER_BIN="/app/cliente_c_stripped"
+        CONTAINER_BIN="/app/bot_amd64"
         IS_EMULATED=0
         ;;
     bot_armv7|cliente_c_armv7|cliente_c_armv7_stripped|armv7|arm|arquitectura_armv7)
         ARCH="ARMV7"
         ARCH_DIR="${REPO_ROOT}/Codigo_c/Arquitectura_ARMV7"
         IMAGE_NAME="cliente_c_armv7_img:latest"
-        CONTAINER_BIN="/app/cliente_c_armv7_stripped"
+        CONTAINER_BIN="/app/bot_armv7"
         IS_EMULATED=1
         QEMU_ARCH="arm"
         ;;
@@ -207,7 +207,7 @@ case "${BOT_LOWER}" in
         ARCH="MIPS"
         ARCH_DIR="${REPO_ROOT}/Codigo_c/Arquitectura_MIPS"
         IMAGE_NAME="cliente_c_mips_img:latest"
-        CONTAINER_BIN="/app/cliente_c_mips_stripped"
+        CONTAINER_BIN="/app/bot_mips"
         IS_EMULATED=1
         QEMU_ARCH="mips"
         ;;
@@ -217,19 +217,19 @@ case "${BOT_LOWER}" in
             ARCH="AMD64"
             ARCH_DIR="${REPO_ROOT}/Codigo_c/Arquitectura_AMD64"
             IMAGE_NAME="cliente_c_amd64_img:latest"
-            CONTAINER_BIN="/app/cliente_c_stripped"
+            CONTAINER_BIN="/app/bot_amd64"
         elif [[ "${RAW_BOT_ARG}" == *"Arquitectura_ARMV7"* ]] && [ -e "${REPO_ROOT}/${RAW_BOT_ARG}" ]; then
             ARCH="ARMV7"
             ARCH_DIR="${REPO_ROOT}/Codigo_c/Arquitectura_ARMV7"
             IMAGE_NAME="cliente_c_armv7_img:latest"
-            CONTAINER_BIN="/app/cliente_c_armv7_stripped"
+            CONTAINER_BIN="/app/bot_armv7"
             IS_EMULATED=1
             QEMU_ARCH="arm"
         elif [[ "${RAW_BOT_ARG}" == *"Arquitectura_MIPS"* ]] && [ -e "${REPO_ROOT}/${RAW_BOT_ARG}" ]; then
             ARCH="MIPS"
             ARCH_DIR="${REPO_ROOT}/Codigo_c/Arquitectura_MIPS"
             IMAGE_NAME="cliente_c_mips_img:latest"
-            CONTAINER_BIN="/app/cliente_c_mips_stripped"
+            CONTAINER_BIN="/app/bot_mips"
             IS_EMULATED=1
             QEMU_ARCH="mips"
         else
@@ -253,17 +253,17 @@ MEM_CLEAN="$(echo "${RAW_MEM_ARG}" | tr '[:upper:]' '[:lower:]' | sed 's/mb$//; 
 
 if ! [[ "${MEM_CLEAN}" =~ ^[0-9]+$ ]]; then
     log_err "La cantidad de memoria ('${RAW_MEM_ARG}') no es un número entero válido."
-    log_err "Valores permitidos: 32, 64, 128 (MB)."
+    log_err "Valores permitidos: 8, 16, 32, 64, 128, 256, 512 (MB)."
     exit 1
 fi
 
 case "${MEM_CLEAN}" in
-    32|64|128)
+    8|16|32|64|128|256|512)
         MEM_MB="${MEM_CLEAN}"
         ;;
     *)
         log_err "Límite de memoria no admitido: '${RAW_MEM_ARG}' MB."
-        log_err "Los límites de memoria permitidos para el estudio son: 32, 64 o 128 (MB)."
+        log_err "Los límites de memoria permitidos son potencias de 2 hasta 512 MB: 8, 16, 32, 64, 128, 256 o 512 (MB)."
         exit 1
         ;;
 esac
@@ -359,18 +359,8 @@ if ! docker network inspect "${DOCKER_NET}" >/dev/null 2>&1; then
 fi
 log_ok "Red interna aislada '${DOCKER_NET}' lista (sin acceso a Internet externo)."
 
-# Verificar soporte binfmt_misc de QEMU si la arquitectura requiere emulación
-HOST_MACHINE="$(uname -m)"
-if [ "${IS_EMULATED}" -eq 1 ] && [ "${HOST_MACHINE}" = "x86_64" ]; then
-    if [ ! -f "/proc/sys/fs/binfmt_misc/qemu-${QEMU_ARCH}" ]; then
-        log_info "Registrando intérprete binfmt_misc para emulación de arquitectura ${ARCH} (${QEMU_ARCH})..."
-        if ! docker run --rm --privileged tonistiigi/binfmt --install "${QEMU_ARCH}" >/dev/null 2>&1; then
-            log_err "No se pudo registrar el soporte binfmt_misc para ${ARCH}."
-            log_err "Ejecute manualmente: docker run --rm --privileged tonistiigi/binfmt --install ${QEMU_ARCH}"
-            exit 1
-        fi
-    fi
-fi
+# La emulación QEMU user-mode (qemu-arm-static / qemu-mips-static) y las
+# librerías cruzadas ya están integradas dentro de las imágenes Docker de ARMV7 y MIPS.
 
 # Compilar imagen del servidor mock si no existe
 if [ ! -f "${REPO_ROOT}/Dockerfile.mock" ] || [ ! -f "${REPO_ROOT}/servidor_mock.c" ]; then
@@ -424,6 +414,10 @@ log_ok "Servidor mock activo y escuchando en ${MOCK_CONTAINER}:9090."
 # ------------------------------------------------------------------------------
 # 10, 11, 12, 13 y 14. Ejecución del cliente C y recopilación de métricas en CSV
 # ------------------------------------------------------------------------------
+# Pre-crear el archivo CSV desde el usuario anfitrión para garantizar permisos de escritura
+: > "${CSV_HOST_PATH}"
+chmod 666 "${CSV_HOST_PATH}"
+
 log_info "Iniciando prueba de '${ARCH}' con límite de ${MEM_MB} MB de RAM..."
 
 set +e

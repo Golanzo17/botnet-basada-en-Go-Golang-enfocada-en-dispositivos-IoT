@@ -14,7 +14,7 @@
 #include <stdbool.h>
 
 #define DEFAULT_BASE_PORT          9090
-#define DEFAULT_NUM_WORKERS        64
+#define DEFAULT_NUM_WORKERS        16
 #define DEFAULT_SIMULATED_SLOTS    64
 #define DEFAULT_HEAP_TARGET_MB     2
 #define DEFAULT_CPU_LOOP_WORK      250
