@@ -1,0 +1,13 @@
+RESUMEN FINAL CONSOLIDADO DEL BENCHMARK (C - AMD64)
+Tiempo_Carga_s: 19.0
+Slots_Concurrentes: 4000
+RAM_Idle_RSS_MB: 2.02
+RAM_Heap_Target_MB: 2
+RAM_Peak_RSS_MB: 5.14
+Conexiones_Totales: 28243
+Conexiones_Exitosas: 15087
+Conexiones_Timeout: 6610
+Conexiones_Fallidas: 6546
+Liberaciones_Manuales: 21697
+Trafico_Total_MB: 0.69
+Estado: ESTABLE_SIN_OOM
