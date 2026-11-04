@@ -1,0 +1,32 @@
+# ============================================================================
+# docker-compose.yml: Orquestación Segura del Banco de Pruebas IoT
+# ============================================================================
+services:
+  servidor_mock:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    container_name: servidor_mock
+    networks:
+      - red_simulacion
+    ports:
+      - "9090:9090"
+
+  cliente_c:
+    build:
+      context: ./Codigo_c/Arquitectura_AMD64
+      dockerfile: Dockerfile
+    container_name: cliente_c_amd64
+    networks:
+      - red_simulacion
+    depends_on:
+      - servidor_mock
+    # Emulación de restricciones IoT (32 MB de RAM fija sin swap)
+    mem_limit: 32m
+    memswap_limit: 32m
+    command: ["5", "2", "64", "servidor_mock"]
+
+networks:
+  red_simulacion:
+    driver: bridge
+

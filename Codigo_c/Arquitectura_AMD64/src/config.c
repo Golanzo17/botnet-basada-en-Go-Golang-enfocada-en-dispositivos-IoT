@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 void config_init_defaults(Config *cfg) {
     if (!cfg) return;
@@ -111,6 +113,21 @@ int config_parse_args(Config *cfg, int argc, char *argv[]) {
                 }
             }
         }
+        if (argc > 4) {
+            strncpy(cfg->target_host, argv[4], sizeof(cfg->target_host) - 1);
+            cfg->target_host[sizeof(cfg->target_host) - 1] = '\0';
+        }
+    }
+
+    // Resolver hostname a IPv4 si se pasa un nombre de contenedor Docker o dominio
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(cfg->target_host, NULL, &hints, &res) == 0 && res != NULL) {
+        struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+        inet_ntop(AF_INET, &(ipv4->sin_addr), cfg->target_host, sizeof(cfg->target_host));
+        freeaddrinfo(res);
     }
 
     // Validaciones de seguridad para límites
@@ -133,8 +150,8 @@ void config_print(const Config *cfg) {
 
     printf("=================================================================\n");
     printf(" BENCHMARK EMPIRICO DE C (CPU + HEAP MANUAL + POSIX SOCKETS)     \n");
-    printf(" Cores CPU: %ld | Slots/Workers: %d/%d | RAM Base: %d MB | SYN_SENT: %d%%\n",
-           num_cores, cfg->simulated_slots, cfg->num_workers, cfg->heap_target_mb, cfg->unreachable_ratio);
+    printf(" Cores CPU: %ld | Slots/Workers: %d/%d | RAM Base: %d MB | Host: %s:%d | SYN_SENT: %d%%\n",
+           num_cores, cfg->simulated_slots, cfg->num_workers, cfg->heap_target_mb, cfg->target_host, cfg->base_port, cfg->unreachable_ratio);
     printf("=================================================================\n");
 }
 
