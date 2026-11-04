@@ -2,7 +2,7 @@
 # Dockerfile.mock: Servidor TCP Mock Sink (Ubuntu 22.04 LTS AMD64)
 # ============================================================================
 
-FROM --platform=linux/amd64 ubuntu:22.04 AS builder
+FROM ubuntu:22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,7 +15,7 @@ WORKDIR /build
 COPY servidor_mock.c .
 RUN gcc -O2 -pthread servidor_mock.c -o servidor_mock
 
-FROM --platform=linux/amd64 ubuntu:22.04 AS runtime
+FROM ubuntu:22.04 AS runtime
 WORKDIR /app
 COPY --from=builder /build/servidor_mock /app/servidor_mock
 

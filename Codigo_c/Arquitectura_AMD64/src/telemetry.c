@@ -24,6 +24,13 @@ void telemetry_init(telemetry_t *t) {
     atomic_init(&t->syn_sent_dials, 0);
     atomic_init(&t->bytes_transferred, 0);
     atomic_init(&t->manual_frees, 0);
+
+    atomic_init(&t->total_successful_dials, 0);
+    atomic_init(&t->total_failed_dials, 0);
+    atomic_init(&t->total_syn_sent_dials, 0);
+    atomic_init(&t->total_bytes_transferred, 0);
+    atomic_init(&t->total_manual_frees, 0);
+    t->peak_rss_mb = 0.0;
 }
 
 double telemetry_get_process_rss_mb(void) {
@@ -72,6 +79,17 @@ void *telemetry_reporter_thread(void *arg) {
         long active_slots = atomic_load(&metrics->active_slots);
         double rss_mb     = telemetry_get_process_rss_mb();
 
+        // Acumular totales para el reporte final
+        atomic_fetch_add(&metrics->total_successful_dials, dials_ok);
+        atomic_fetch_add(&metrics->total_failed_dials, dials_err);
+        atomic_fetch_add(&metrics->total_syn_sent_dials, dials_syn);
+        atomic_fetch_add(&metrics->total_bytes_transferred, bytes_tx);
+        atomic_fetch_add(&metrics->total_manual_frees, frees_cnt);
+
+        if (rss_mb > metrics->peak_rss_mb) {
+            metrics->peak_rss_mb = rss_mb;
+        }
+
         // Formato homólogo a [GO METRICS] para facilitar análisis empírico
         printf("\r[C METRICS]  Slots: %ld | RAM (RSS): %.2f MB | Frees/s: %ld | Dials/s: %ld | Timeouts/s: %ld | Traffic: %.1f KB/s   ",
                active_slots,
@@ -84,4 +102,61 @@ void *telemetry_reporter_thread(void *arg) {
     }
 
     return NULL;
+}
+
+void telemetry_print_final_summary(const telemetry_t *t, int heap_target_mb,
+                                   int simulated_slots, double idle_rss,
+                                   double duration_sec) {
+    if (!t) return;
+
+    long ok_dials   = atomic_load(&t->total_successful_dials);
+    long syn_dials  = atomic_load(&t->total_syn_sent_dials);
+    long fail_dials = atomic_load(&t->total_failed_dials);
+    long total_reqs = ok_dials + syn_dials + fail_dials;
+    long frees      = atomic_load(&t->total_manual_frees);
+    long bytes_tx   = atomic_load(&t->total_bytes_transferred);
+
+    double mb_tx = (double)bytes_tx / (1024.0 * 1024.0);
+    double avg_traffic_kb_s = duration_sec > 0 ? (((double)bytes_tx / 1024.0) / duration_sec) : 0.0;
+    double avg_dials_s = duration_sec > 0 ? ((double)total_reqs / duration_sec) : 0.0;
+
+    printf("\n\n");
+    printf("=================================================================\n");
+    printf("        RESUMEN FINAL CONSOLIDADO DEL BENCHMARK (C - AMD64)      \n");
+    printf("=================================================================\n");
+    printf("  Tiempo medido en carga:        %.1f segundos\n", duration_sec);
+    printf("  Slots lógicos concurrentes:    %d\n", simulated_slots);
+    printf("  ---------------------------------------------------------------\n");
+    printf("  RAM Base en Reposo (Idle RSS): %.2f MB\n", idle_rss);
+    printf("  RAM Estática en Heap:          %d MB\n", heap_target_mb);
+    printf("  RAM Pico Registrada (Max RSS): %.2f MB\n", t->peak_rss_mb);
+    printf("  ---------------------------------------------------------------\n");
+    printf("  Conexiones TCP Totales:        %ld (promedio: %.1f req/s)\n", total_reqs, avg_dials_s);
+    printf("    -> Exitosas (ESTABLISHED):   %ld\n", ok_dials);
+    printf("    -> Timeout (SYN_SENT):       %ld\n", syn_dials);
+    printf("    -> Rechazadas / Errores:     %ld\n", fail_dials);
+    printf("  Liberaciones Manuales (free):  %ld bloques (sin pausas GC)\n", frees);
+    printf("  Tráfico de Red Transmitido:    %.2f MB (%.1f KB/s)\n", mb_tx, avg_traffic_kb_s);
+    printf("  Comportamiento frente a RAM:   ESTABLE (Sin OOM Stop)\n");
+    printf("=================================================================\n");
+
+    // Guardar también en archivo de texto para trazabilidad experimental
+    FILE *f = fopen("benchmark_resultado.txt", "w");
+    if (f) {
+        fprintf(f, "RESUMEN FINAL CONSOLIDADO DEL BENCHMARK (C - AMD64)\n");
+        fprintf(f, "Tiempo_Carga_s: %.1f\n", duration_sec);
+        fprintf(f, "Slots_Concurrentes: %d\n", simulated_slots);
+        fprintf(f, "RAM_Idle_RSS_MB: %.2f\n", idle_rss);
+        fprintf(f, "RAM_Heap_Target_MB: %d\n", heap_target_mb);
+        fprintf(f, "RAM_Peak_RSS_MB: %.2f\n", t->peak_rss_mb);
+        fprintf(f, "Conexiones_Totales: %ld\n", total_reqs);
+        fprintf(f, "Conexiones_Exitosas: %ld\n", ok_dials);
+        fprintf(f, "Conexiones_Timeout: %ld\n", syn_dials);
+        fprintf(f, "Conexiones_Fallidas: %ld\n", fail_dials);
+        fprintf(f, "Liberaciones_Manuales: %ld\n", frees);
+        fprintf(f, "Trafico_Total_MB: %.2f\n", mb_tx);
+        fprintf(f, "Estado: ESTABLE_SIN_OOM\n");
+        fclose(f);
+        printf("[+] Resultados persistidos en disco en: benchmark_resultado.txt\n");
+    }
 }

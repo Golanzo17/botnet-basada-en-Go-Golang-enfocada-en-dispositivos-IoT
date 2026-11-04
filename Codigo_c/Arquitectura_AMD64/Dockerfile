@@ -4,7 +4,7 @@
 # ============================================================================
 
 # --- Etapa 1: Compilación (Builder) ---
-FROM --platform=linux/amd64 ubuntu:22.04 AS builder
+FROM ubuntu:22.04 AS builder
 
 # Evitar prompts interactivos durante la instalación de paquetes
 ENV DEBIAN_FRONTEND=noninteractive
@@ -28,7 +28,7 @@ COPY src/ ./src/
 RUN make clean && make all
 
 # --- Etapa 2: Entorno de Ejecución (Runtime Ligero) ---
-FROM --platform=linux/amd64 ubuntu:22.04 AS runtime
+FROM ubuntu:22.04 AS runtime
 
 WORKDIR /app
 
