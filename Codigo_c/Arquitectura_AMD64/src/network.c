@@ -2,7 +2,8 @@
  * ============================================================================
  * Proyecto: Cliente Benigno de Referencia en C (Arquitectura AMD64 / x86-64)
  * Archivo: src/network.c
- * Descripción: Implementación de conexiones TCP no bloqueantes con timeout (POSIX).
+ * Descripción: Implementación de conexiones TCP no bloqueantes con timeout (POSIX)
+ *              y contabilización de bytes enviados (TX) y recibidos (RX).
  * ============================================================================
  */
 
@@ -76,7 +77,7 @@ int network_dial_tcp_timeout(const char *ip, int port, int timeout_ms,
         close(epfd);
 
         if (nfds <= 0) {
-            // Timeout alcanzado (IP inalcanzable, socket retenido en SYN_SENT)
+            // Timeout alcanzado
             close(sockfd);
             if (t) atomic_fetch_add(&t->failed_dials, 1);
             return -1;
@@ -92,7 +93,7 @@ int network_dial_tcp_timeout(const char *ip, int port, int timeout_ms,
         }
     }
 
-    // Conexión exitosa: registrar socket activo y enviar payload
+    // Conexión exitosa: registrar socket activo y enviar payload al servidor mock
     if (t) {
         atomic_fetch_add(&t->active_sockets, 1);
         atomic_fetch_add(&t->successful_dials, 1);
@@ -102,10 +103,25 @@ int network_dial_tcp_timeout(const char *ip, int port, int timeout_ms,
         ssize_t sent = send(sockfd, payload, payload_len, MSG_NOSIGNAL);
         if (sent > 0 && t) {
             atomic_fetch_add(&t->bytes_transferred, sent);
-            uint8_t rx_buf[16];
-            // Lectura no bloqueante de respuesta de confirmación si está disponible
-            ssize_t r = recv(sockfd, rx_buf, sizeof(rx_buf), MSG_DONTWAIT);
-            (void)r;
+
+            // Esperar brevemente respuesta ACK_OK del servidor mock para contabilizar RX
+            int repfd = epoll_create1(EPOLL_CLOEXEC);
+            if (repfd >= 0) {
+                struct epoll_event rev, revents[1];
+                memset(&rev, 0, sizeof(rev));
+                rev.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+                rev.data.fd = sockfd;
+                if (epoll_ctl(repfd, EPOLL_CTL_ADD, sockfd, &rev) == 0) {
+                    if (epoll_wait(repfd, revents, 1, 15) > 0) {
+                        uint8_t rx_buf[64];
+                        ssize_t r = recv(sockfd, rx_buf, sizeof(rx_buf), MSG_DONTWAIT);
+                        if (r > 0) {
+                            atomic_fetch_add(&t->bytes_received, r);
+                        }
+                    }
+                }
+                close(repfd);
+            }
         }
     }
 

@@ -30,11 +30,8 @@
 /**
  * config_parse() — Parsea argv[] y llena la Config con valores o defaults.
  *
- * Sintaxis esperada:
- *   ./cliente_c_mips [slots] [workers] [stack_kb] [host] [port]
- *
- * Todos los argumentos son opcionales; si se omiten se usan defaults.
- * Realiza resolución DNS del host al final para detectar errores temprano.
+ * Sintaxis homóloga a AMD64 y ARMV7:
+ *   ./cliente_c_mips [idle_sec] [heap_mb] [total_uca] [host] [port]
  */
 int config_parse(Config *cfg, int argc, char *argv[])
 {
@@ -43,18 +40,21 @@ int config_parse(Config *cfg, int argc, char *argv[])
     }
 
     /* ---- Valores por defecto ---- */
-    cfg->slots      = 5;
-    cfg->workers    = 2;
+    cfg->idle_sec   = IDLE_DURATION;
+    cfg->heap_mb    = 2;
+    cfg->total_uca  = 64;
+    cfg->workers    = 4;
+    cfg->slots      = 16; /* 4 workers * 16 slots = 64 UCA concurrentes */
     cfg->stack_kb   = 128;
     cfg->port       = DEFAULT_PORT;
     cfg->addr       = NULL;
     strncpy(cfg->host, DEFAULT_HOST, sizeof(cfg->host) - 1);
     cfg->host[sizeof(cfg->host) - 1] = '\0';
 
-    /* ---- Parseo de argumentos positionales ---- */
-    if (argc > 1) cfg->slots    = atoi(argv[1]);
-    if (argc > 2) cfg->workers  = atoi(argv[2]);
-    if (argc > 3) cfg->stack_kb = atoi(argv[3]);
+    /* ---- Parseo de argumentos posicionales ---- */
+    if (argc > 1) cfg->idle_sec  = atoi(argv[1]);
+    if (argc > 2) cfg->heap_mb   = atoi(argv[2]);
+    if (argc > 3) cfg->total_uca = atoi(argv[3]);
     if (argc > 4) {
         strncpy(cfg->host, argv[4], sizeof(cfg->host) - 1);
         cfg->host[sizeof(cfg->host) - 1] = '\0';
@@ -62,9 +62,20 @@ int config_parse(Config *cfg, int argc, char *argv[])
     if (argc > 5) cfg->port = (uint16_t)atoi(argv[5]);
 
     /* ---- Validaciones básicas ---- */
-    if (cfg->slots   <= 0 || cfg->slots   > MAX_SLOTS)   cfg->slots   = 5;
-    if (cfg->workers <= 0 || cfg->workers > MAX_WORKERS)  cfg->workers = 2;
-    if (cfg->stack_kb <= 0)                               cfg->stack_kb = 128;
+    if (cfg->idle_sec < 0)  cfg->idle_sec = IDLE_DURATION;
+    if (cfg->heap_mb  < 0)  cfg->heap_mb  = 2;
+    if (cfg->total_uca <= 0) cfg->total_uca = 64;
+
+    /* Distribuir UCA entre workers (4 hilos con N slots epoll cada uno) */
+    if (cfg->total_uca < 4) {
+        cfg->workers = 1;
+        cfg->slots   = cfg->total_uca;
+    } else {
+        cfg->workers = 4;
+        cfg->slots   = cfg->total_uca / cfg->workers;
+        if (cfg->slots <= 0) cfg->slots = 1;
+        if (cfg->slots > MAX_SLOTS) cfg->slots = MAX_SLOTS;
+    }
 
     /* ---- Resolución DNS del host ---- */
     char port_str[8];
@@ -104,17 +115,11 @@ void config_print(const Config *cfg)
 {
     if (!cfg) return;
 
-    printf("╔══════════════════════════════════════════════════════╗\n");
-    printf("║   Cliente C — Arquitectura MIPS 32-bit (Big-Endian)  ║\n");
-    printf("║   Simulación de cliente botnet (benign benchmark)     ║\n");
-    printf("╠══════════════════════════════════════════════════════╣\n");
-    printf("║  Slots de conexión  : %-4d                           ║\n", cfg->slots);
-    printf("║  Workers (hilos)    : %-4d                           ║\n", cfg->workers);
-    printf("║  Pila por worker    : %-4d KB                        ║\n", cfg->stack_kb);
-    printf("║  Destino            : %s:%-5u                 ║\n",    cfg->host, cfg->port);
-    printf("║  DNS resuelto       : %s                           ║\n",
-           cfg->addr ? "OK" : "FALLO");
-    printf("╚══════════════════════════════════════════════════════╝\n");
+    printf("=================================================================\n");
+    printf(" BENCHMARK EMPIRICO DE C — ARQUITECTURA MIPS 32-bit (Big-Endian) \n");
+    printf(" UCA Totales: %d (%d workers x %d slots) | RAM Heap Base: %d MB | Host: %s:%u\n",
+           cfg->workers * cfg->slots, cfg->workers, cfg->slots,
+           cfg->heap_mb, cfg->host, cfg->port);
+    printf("=================================================================\n");
     fflush(stdout);
 }
-

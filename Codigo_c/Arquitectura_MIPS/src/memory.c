@@ -3,11 +3,10 @@
  *
  * Envuelve malloc/free para:
  *   - Registrar frees en g_metrics.total_frees (atómico).
- *   - Leer /proc/self/status para obtener VmRSS (RSS en kB → MB).
+ *   - Leer /proc/self/status y cgroups para obtener el consumo efectivo de RAM (MB).
  *
  * Compatible con MIPS 32-bit Linux.
  * sizeof(void*) == 4; los punteros son 32-bit en MIPS O32 ABI.
- * /proc/self/status está disponible en kernels Linux MIPS.
  *
  * Autoría académica — Simulación benigna para análisis comparativo C vs Go.
  */
@@ -24,17 +23,6 @@
 #include "memory.h"
 #include "telemetry.h"  /* g_metrics */
 
-/* -------------------------------------------------------------------------
- * Implementación pública
- * ------------------------------------------------------------------------- */
-
-/**
- * mem_alloc() — malloc con reporte de error.
- *
- * En MIPS 32-bit, el heap está limitado por la arquitectura de 32-bit
- * (máx ~3 GB de espacio de usuario). Para IoT con 32 MB de RAM, el límite
- * real es mucho menor. Fallos de malloc deben reportarse inmediatamente.
- */
 void *mem_alloc(size_t size)
 {
     void *ptr = malloc(size);
@@ -44,13 +32,6 @@ void *mem_alloc(size_t size)
     return ptr;
 }
 
-/**
- * mem_free() — free con contador atómico.
- *
- * Incrementa g_metrics.total_frees para calcular frees/s en telemetría.
- * atomic_fetch_add con memory_order_relaxed es suficiente para contadores.
- * En MIPS 32-bit, esto se implementa con instrucciones LL/SC.
- */
 void mem_free(void *ptr)
 {
     if (!ptr) return;
@@ -58,35 +39,61 @@ void mem_free(void *ptr)
     atomic_fetch_add_explicit(&g_metrics.total_frees, 1L, memory_order_relaxed);
 }
 
-/**
- * mem_get_rss_mb() — Lee el RSS actual del proceso desde /proc/self/status.
- *
- * /proc/self/status contiene una línea "VmRSS:\t<kB> kB".
- * Se parsea con fgets() + strstr() para evitar dependencias de scanf.
- *
- * Funciona en Linux MIPS porque /proc es un VFS del kernel, independiente
- * de la arquitectura del espacio de usuario.
- *
- * @return RSS en MB (double), o 0.0 si no puede leer el archivo.
- */
 double mem_get_rss_mb(void)
 {
+    double rss_mb = 0.0;
+
     FILE *f = fopen("/proc/self/status", "r");
-    if (!f) return 0.0;
+    if (f) {
+        char line[128];
+        long rss_kb = 0;
 
-    char line[128];
-    long rss_kb = 0;
-
-    while (fgets(line, sizeof(line), f)) {
-        if (strncmp(line, "VmRSS:", 6) == 0) {
-            /* Formato: "VmRSS:\t   1234 kB\n" */
-            if (sscanf(line + 6, "%ld", &rss_kb) == 1) {
-                break;
+        while (fgets(line, sizeof(line), f)) {
+            if (strncmp(line, "VmRSS:", 6) == 0) {
+                if (sscanf(line + 6, "%ld", &rss_kb) == 1) {
+                    break;
+                }
             }
         }
+        fclose(f);
+        rss_mb = (double)rss_kb / 1024.0;
     }
 
-    fclose(f);
-    return (double)rss_kb / 1024.0;
-}
+    /* Consultar también el cgroup v2 del contenedor si tiene límite configurado */
+    FILE *cg_max = fopen("/sys/fs/cgroup/memory.max", "r");
+    if (cg_max) {
+        char max_buf[64] = {0};
+        if (fgets(max_buf, sizeof(max_buf), cg_max)) {
+            if (max_buf[0] >= '0' && max_buf[0] <= '9') {
+                FILE *cg_cur = fopen("/sys/fs/cgroup/memory.current", "r");
+                if (cg_cur) {
+                    unsigned long long cur_bytes = 0;
+                    if (fscanf(cg_cur, "%llu", &cur_bytes) == 1) {
+                        unsigned long long inactive_file = 0;
+                        FILE *cg_stat = fopen("/sys/fs/cgroup/memory.stat", "r");
+                        if (cg_stat) {
+                            char sline[128];
+                            while (fgets(sline, sizeof(sline), cg_stat)) {
+                                if (sscanf(sline, "inactive_file %llu", &inactive_file) == 1) {
+                                    break;
+                                }
+                            }
+                            fclose(cg_stat);
+                        }
+                        unsigned long long working_bytes = (cur_bytes > inactive_file)
+                                                           ? (cur_bytes - inactive_file)
+                                                           : cur_bytes;
+                        double cg_mb = (double)working_bytes / (1024.0 * 1024.0);
+                        if (cg_mb > rss_mb) {
+                            rss_mb = cg_mb;
+                        }
+                    }
+                    fclose(cg_cur);
+                }
+            }
+        }
+        fclose(cg_max);
+    }
 
+    return rss_mb;
+}

@@ -18,17 +18,16 @@
 # Paquete Ubuntu: gcc-mips-linux-gnu
 # ---------------------------------------------------------------------------
 CROSS_COMPILE ?= mips-linux-gnu-
-CC            ?= $(CROSS_COMPILE)gcc
-STRIP         ?= $(CROSS_COMPILE)strip
-AR            ?= $(CROSS_COMPILE)ar
+CC             = $(CROSS_COMPILE)gcc
+STRIP          = $(CROSS_COMPILE)strip
+AR             = $(CROSS_COMPILE)ar
 
 # ---------------------------------------------------------------------------
 # Flags específicos de MIPS 32-bit
-# -march=mips32   → ISA MIPS32 (compatible con la mayoría de routers IoT)
+# -march=mips32   → ISA MIPS32 (compatible con routers IoT)
 # -mabi=32        → ABI O32 (estándar para MIPS 32-bit Linux)
-# -msoft-float    → sin FPU hardware (máxima compatibilidad con MIPS embebido)
 # ---------------------------------------------------------------------------
-ARCH_FLAGS    ?= -march=mips32 -mabi=32 -msoft-float
+ARCH_FLAGS    ?= -march=mips32 -mabi=32
 
 # ---------------------------------------------------------------------------
 # Flags de compilación

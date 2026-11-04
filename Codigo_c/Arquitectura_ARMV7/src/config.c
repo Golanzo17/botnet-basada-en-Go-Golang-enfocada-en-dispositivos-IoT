@@ -106,11 +106,8 @@ int config_parse_args(Config *cfg, int argc, char *argv[]) {
         if (argc > 3) {
             int val = atoi(argv[3]);
             if (val > 0) {
-                if (val >= 256) {
-                    cfg->simulated_slots = val;
-                } else {
-                    cfg->num_workers = val;
-                }
+                cfg->simulated_slots = val;
+                cfg->num_workers = (val > 16) ? 16 : val;
             }
         }
         if (argc > 4) {

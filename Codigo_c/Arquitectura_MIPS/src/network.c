@@ -206,7 +206,8 @@ int net_slot_connect(NetPool *pool, Slot *slot)
     slot->state = SLOT_CONNECTING;
 
     atomic_fetch_add(&g_metrics.total_dials,  1L);
-    atomic_fetch_add(&g_metrics.active_slots, 1);
+    int cur_uca = atomic_fetch_add(&g_metrics.active_slots, 1) + 1;
+    telemetry_update_uca_max(cur_uca);
 
     return 0;
 }

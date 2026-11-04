@@ -6,10 +6,8 @@
 # --- Etapa 1: Compilación (Builder) ---
 FROM ubuntu:22.04 AS builder
 
-# Evitar prompts interactivos durante la instalación de paquetes
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Instalar herramientas esenciales de compilación GNU C
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -19,12 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copiar código fuente y estructura del proyecto
 COPY Makefile .
 COPY include/ ./include/
 COPY src/ ./src/
 
-# Compilar versiones nativa y reducida (stripped)
 RUN make clean && make all
 
 # --- Etapa 2: Entorno de Ejecución (Runtime Ligero) ---
@@ -32,14 +28,12 @@ FROM ubuntu:22.04 AS runtime
 
 WORKDIR /app
 
-# Copiar únicamente los binarios generados desde la etapa de compilación
 COPY --from=builder /build/bin/cliente_c /app/cliente_c
 COPY --from=builder /build/bin/cliente_c_stripped /app/cliente_c_stripped
 
-# Otorgar permisos de ejecución
-RUN chmod +x /app/cliente_c /app/cliente_c_stripped
+RUN chmod +x /app/cliente_c /app/cliente_c_stripped && \
+    ln -sf /app/cliente_c_stripped /app/bot_amd64 && \
+    mkdir -p /app/benchmarks
 
-# Parámetros por defecto: 5 segundos de idle, 2 MB heap retenido, 64 workers POSIX
 ENTRYPOINT ["/app/cliente_c_stripped"]
-CMD ["5", "2", "64"]
-
+CMD ["2", "2", "64", "servidor_mock"]
