@@ -89,3 +89,4 @@ double mem_get_rss_mb(void)
     fclose(f);
     return (double)rss_kb / 1024.0;
 }
+

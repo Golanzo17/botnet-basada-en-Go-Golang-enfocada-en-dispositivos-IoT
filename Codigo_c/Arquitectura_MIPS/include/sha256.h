@@ -82,3 +82,4 @@ void sha256_final(SHA256_CTX *ctx, uint8_t digest[SHA256_DIGEST_SIZE]);
 void sha256_hex(const uint8_t *data, size_t len, char hexout[65]);
 
 #endif /* SHA256_H */
+

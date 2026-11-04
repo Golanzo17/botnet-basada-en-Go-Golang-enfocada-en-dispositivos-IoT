@@ -164,3 +164,4 @@ void worker_pool_join(WorkerPool *pool)
     mem_free(pool->threads);
     mem_free(pool);
 }
+

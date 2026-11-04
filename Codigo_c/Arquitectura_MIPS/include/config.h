@@ -123,3 +123,4 @@ void config_free(Config *cfg);
 void config_print(const Config *cfg);
 
 #endif /* CONFIG_H */
+

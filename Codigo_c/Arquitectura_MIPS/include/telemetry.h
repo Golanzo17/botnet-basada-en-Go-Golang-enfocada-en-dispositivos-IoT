@@ -133,3 +133,4 @@ void telemetry_save_results(int cfg_slots, int cfg_workers, double elapsed_s);
 void telemetry_print_summary(int cfg_slots, int cfg_workers, double elapsed_s);
 
 #endif /* TELEMETRY_H */
+

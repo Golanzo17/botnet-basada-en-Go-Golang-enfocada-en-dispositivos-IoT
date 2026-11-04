@@ -288,3 +288,4 @@ void telemetry_save_results(int cfg_slots, int cfg_workers, double elapsed_s)
     fprintf(stderr, "[TELEMETRY MIPS] Resultados guardados en: %s\n", saved_path);
     fflush(stderr);
 }
+

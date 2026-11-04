@@ -237,3 +237,4 @@ Este código simula el **patrón de conectividad** de un botnet cliente tipo Mir
 - ✅ El servidor destino es siempre el mock local
 - ✅ El objetivo es **medir el overhead de recursos** (RAM, CPU, red)
 - ✅ Comparar C vs Go en condiciones equivalentes de hardware embebido
+

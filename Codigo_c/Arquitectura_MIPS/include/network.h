@@ -133,3 +133,4 @@ int net_slot_send(Slot *slot);
 int net_pool_tick(NetPool *pool, int timeout_ms);
 
 #endif /* NETWORK_H */
+

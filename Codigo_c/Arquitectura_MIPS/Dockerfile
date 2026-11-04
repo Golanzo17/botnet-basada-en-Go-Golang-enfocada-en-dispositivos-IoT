@@ -63,3 +63,4 @@ RUN mkdir -p /app/host /app/out
 # Argumentos por defecto: slots workers stack_kb host
 ENTRYPOINT ["/app/cliente_c_mips_stripped"]
 CMD ["5", "2", "64", "servidor_mock"]
+

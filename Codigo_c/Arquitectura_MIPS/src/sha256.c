@@ -218,3 +218,4 @@ void sha256_hex(const uint8_t *data, size_t len, char hexout[65])
     }
     hexout[64] = '\0';
 }
+

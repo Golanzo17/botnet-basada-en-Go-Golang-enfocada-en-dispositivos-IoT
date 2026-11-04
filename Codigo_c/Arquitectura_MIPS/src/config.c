@@ -117,3 +117,4 @@ void config_print(const Config *cfg)
     printf("╚══════════════════════════════════════════════════════╝\n");
     fflush(stdout);
 }
+

@@ -82,3 +82,4 @@ WorkerPool *worker_pool_start(const Config *cfg);
 void worker_pool_join(WorkerPool *pool);
 
 #endif /* WORKER_H */
+
