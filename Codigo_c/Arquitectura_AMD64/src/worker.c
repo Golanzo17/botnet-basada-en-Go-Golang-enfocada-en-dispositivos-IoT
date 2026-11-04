@@ -2,7 +2,8 @@
  * ============================================================================
  * Proyecto: Cliente Benigno de Referencia en C (Arquitectura AMD64 / x86-64)
  * Archivo: src/worker.c
- * Descripción: Implementación del worker concurrente y gestión del pool de hilos.
+ * Descripción: Implementación del worker concurrente, gestión del pool de hilos
+ *              e instrumentación atómica de Unidades Concurrentes de Ataque (UCA).
  * ============================================================================
  */
 
@@ -45,10 +46,11 @@ static void *worker_thread_func(void *arg) {
     int iter = 0;
 
     while (*keep_running) {
+        // Instrumentación de Métrica 3 (UCA): inicio de unidad de trabajo concurrente activa
+        long cur_uca = atomic_fetch_add(&telemetry->uca_active, 1) + 1;
+        telemetry_update_uca_max(telemetry, cur_uca);
+
         // A. ASIGNACIÓN Y LIBERACIÓN DINÁMICA MANUAL (Contraste con el GC de Go)
-        // Se reserva un buffer dinámico de tamaño variable (4KB a 8KB) y se libera
-        // inmediatamente tras su cómputo, devolviendo la memoria directamente al allocator
-        // sin provocar acumulación ni pausas de recolección de basura.
         size_t buffer_size = 4096 + (size_t)(rand_r(&seed) % 4096);
         uint8_t *dynamic_buf = (uint8_t *)malloc(buffer_size);
         if (dynamic_buf) {
@@ -66,8 +68,9 @@ static void *worker_thread_func(void *arg) {
         }
         iter++;
 
-        // C. SELECCIÓN DE OBJETIVO CON ROTACIÓN DE IP
-        int is_unreachable = (rand_r(&seed) % 100) < cfg->unreachable_ratio;
+        // C. SELECCIÓN DE OBJETIVO (exclusivamente servidor mock local por defecto)
+        int is_unreachable = (cfg->unreachable_ratio > 0) &&
+                             ((rand_r(&seed) % 100) < cfg->unreachable_ratio);
         const char *target_ip = cfg->target_host;
         int target_port = cfg->base_port;
 
@@ -81,6 +84,9 @@ static void *worker_thread_func(void *arg) {
         network_dial_tcp_timeout(target_ip, target_port, cfg->dial_timeout_ms,
                                  (const uint8_t *)payload_str, (size_t)payload_len,
                                  telemetry);
+
+        // Fin del ciclo activo de esta unidad concurrente antes de la pausa
+        atomic_fetch_sub(&telemetry->uca_active, 1);
 
         // E. PAUSA DE CICLO
         if (cfg->worker_delay_us > 0) {
@@ -100,33 +106,26 @@ int worker_pool_start(worker_pool_t *pool, const Config *cfg,
     pool->num_workers = cfg->num_workers;
     pool->keep_running = keep_running;
 
-    pool->threads = (pthread_t *)malloc(sizeof(pthread_t) * (size_t)pool->num_workers);
-    if (!pool->threads) {
-        perror("malloc worker threads array");
-        return -1;
-    }
+    pool->threads = (pthread_t *)calloc((size_t)cfg->num_workers, sizeof(pthread_t));
+    pool->contexts = (worker_context_t *)calloc((size_t)cfg->num_workers, sizeof(worker_context_t));
 
-    pool->contexts = (worker_context_t *)malloc(sizeof(worker_context_t) * (size_t)pool->num_workers);
-    if (!pool->contexts) {
-        perror("malloc worker contexts array");
+    if (!pool->threads || !pool->contexts) {
+        perror("calloc worker pool");
         free(pool->threads);
-        pool->threads = NULL;
+        free(pool->contexts);
         return -1;
     }
 
+    // Configurar stack reducido por hilo (128 KB) apropiado para dispositivos IoT
     pthread_attr_t attr;
     pthread_attr_init(&attr);
-    // Configurar el stack por hilo en 128 KB (en lugar de 8 MB por defecto en Linux x86-64)
-    // práctica estándar en clientes de alta concurrencia y sistemas embebidos en C
     pthread_attr_setstacksize(&attr, 128 * 1024);
 
     int base_slots = cfg->simulated_slots / cfg->num_workers;
     int remainder  = cfg->simulated_slots % cfg->num_workers;
 
-    printf("[+] Desplegando %d slots sobre %d workers POSIX (stack 128 KB)...\n",
-           cfg->simulated_slots, cfg->num_workers);
-
-    for (int i = 0; i < pool->num_workers; i++) {
+    int created = 0;
+    for (int i = 0; i < cfg->num_workers; i++) {
         pool->contexts[i].worker_id      = i;
         pool->contexts[i].slots_assigned = base_slots + (i < remainder ? 1 : 0);
         pool->contexts[i].cfg            = cfg;
@@ -135,30 +134,39 @@ int worker_pool_start(worker_pool_t *pool, const Config *cfg,
 
         if (pthread_create(&pool->threads[i], &attr, worker_thread_func, &pool->contexts[i]) != 0) {
             perror("pthread_create worker");
-            // Si falla la creación de algún hilo, se ajusta num_workers a los creados exitosamente
-            pool->num_workers = i;
+            *keep_running = 0;
             break;
         }
+        created++;
     }
 
     pthread_attr_destroy(&attr);
+
+    if (created < cfg->num_workers) {
+        for (int j = 0; j < created; j++) {
+            pthread_join(pool->threads[j], NULL);
+        }
+        free(pool->threads);
+        free(pool->contexts);
+        pool->threads = NULL;
+        pool->contexts = NULL;
+        return -1;
+    }
+
     return 0;
 }
 
 void worker_pool_wait_and_stop(worker_pool_t *pool) {
-    if (!pool) return;
+    if (!pool || !pool->threads) return;
+
+    *pool->keep_running = 0;
 
     for (int i = 0; i < pool->num_workers; i++) {
         pthread_join(pool->threads[i], NULL);
     }
 
-    if (pool->threads) {
-        free(pool->threads);
-        pool->threads = NULL;
-    }
-
-    if (pool->contexts) {
-        free(pool->contexts);
-        pool->contexts = NULL;
-    }
+    free(pool->threads);
+    free(pool->contexts);
+    pool->threads = NULL;
+    pool->contexts = NULL;
 }

@@ -1,7 +1,7 @@
 /*
  * config.h — Configuración global del cliente C (Arquitectura MIPS)
  *
- * Define las constantes de comportamiento del cliente: slots de conexión,
+ * Define las constantes de comportamiento del cliente: slots de conexión (UCA),
  * workers, intervalos de telemetría, dimensiones de buffers, etc.
  *
  * Compatible con MIPS 32-bit (big-endian), compilado con mips-linux-gnu-gcc.
@@ -21,13 +21,13 @@
  * Límites de red y workers
  * ------------------------------------------------------------------------- */
 
-/** Número máximo de slots de conexión concurrentes permitidos. */
+/** Número máximo de slots de conexión concurrentes permitidos por worker. */
 #define MAX_SLOTS           256
 
-/** Número máximo de workers (hilos de ataque). */
+/** Número máximo de workers (hilos POSIX). */
 #define MAX_WORKERS         64
 
-/** Número máximo de intentos de reconexión antes de descartar un slot. */
+/** Número máximo de intentos de reconexión antes de reciclar un slot. */
 #define MAX_RETRIES         5
 
 /** Tamaño del buffer de red por conexión (en bytes). */
@@ -40,14 +40,14 @@
  * Intervalos de tiempo (en segundos)
  * ------------------------------------------------------------------------- */
 
-/** Intervalo entre reportes de telemetría (segundos). */
-#define TELEMETRY_INTERVAL  2
+/** Intervalo entre reportes de telemetría y filas CSV (1 segundo). */
+#define TELEMETRY_INTERVAL  1
 
 /** Timeout de conexión TCP (segundos). */
 #define CONNECT_TIMEOUT     5
 
-/** Intervalo de idle antes de arrancar workers (segundos). */
-#define IDLE_DURATION       5
+/** Intervalo de idle por defecto antes de arrancar workers (segundos). */
+#define IDLE_DURATION       2
 
 /* -------------------------------------------------------------------------
  * Puertos y protocolos
@@ -69,11 +69,11 @@
 /** Prefijo de líneas de idle. */
 #define IDLE_PREFIX         "[MIPS IDLE]"
 
-/** Nombre de la arquitectura (para el resumen final). */
-#define ARCH_NAME           "MIPS_32bit"
+/** Nombre de la arquitectura (para el resumen final y CSV). */
+#define ARCH_NAME           "MIPS"
 
 /** Encabezado del resumen final consolidado. */
-#define SUMMARY_HEADER      "RESUMEN FINAL CONSOLIDADO DEL BENCHMARK (MIPS - C)"
+#define SUMMARY_HEADER      "RESUMEN FINAL DEL BENCHMARK C (MIPS)"
 
 /* -------------------------------------------------------------------------
  * Estructura de configuración en tiempo de ejecución
@@ -84,7 +84,10 @@
  * Se pasan como puntero constante a todos los módulos.
  */
 typedef struct {
-    int         slots;          /**< Slots de conexión concurrentes.       */
+    int         idle_sec;       /**< Segundos en fase de reposo (idle).     */
+    int         heap_mb;        /**< MB de heap estático retenido.          */
+    int         total_uca;      /**< Unidades Concurrentes de Ataque (UCA). */
+    int         slots;          /**< Slots de conexión por worker.          */
     int         workers;        /**< Cantidad de worker threads.            */
     int         stack_kb;       /**< Tamaño de pila por worker (KB).        */
     uint16_t    port;           /**< Puerto TCP del servidor destino.       */
@@ -99,7 +102,8 @@ typedef struct {
 /**
  * config_parse() — Parsea argv[] y llena la estructura Config.
  *
- * Uso esperado: ./cliente_c_mips <slots> <workers> <stack_kb> [host] [port]
+ * Uso esperado (homólogo a AMD64/ARMV7):
+ *   ./cliente_c_mips [idle_sec] [heap_mb] [total_uca] [host] [port]
  *
  * @param cfg   Puntero a la estructura Config a llenar.
  * @param argc  Cantidad de argumentos de línea de comandos.
@@ -123,4 +127,3 @@ void config_free(Config *cfg);
 void config_print(const Config *cfg);
 
 #endif /* CONFIG_H */
-

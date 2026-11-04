@@ -3,7 +3,7 @@
  * Proyecto: Cliente Benigno de Referencia en C (Arquitectura AMD64 / x86-64)
  * Archivo: src/main.c
  * Descripción: Punto de entrada principal, orquestación del ciclo de vida,
- *              manejo de señales POSIX y reporte experimental coordinado.
+ *              manejo de señales POSIX y reporte experimental en CSV.
  * ============================================================================
  */
 
@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <time.h>
 
 static volatile sig_atomic_t g_keep_running = 1;
 
@@ -60,7 +61,7 @@ int main(int argc, char *argv[]) {
     double idle_rss = telemetry_get_process_rss_mb();
 
     // ========================================================================
-    // FASE 1: Medición en Reposo (Idle) para auditoría de memoria base (Tabla 2)
+    // FASE 1: Medición en Reposo (Idle) para auditoría de memoria base
     // ========================================================================
     if (cfg.idle_seconds > 0) {
         printf("[*] FASE 1 (REPOSO / IDLE): Midiendo huella base del binario en C durante %d s...\n",
@@ -91,10 +92,23 @@ int main(int argc, char *argv[]) {
     }
 
     // ========================================================================
-    // FASE 3: Despliegue de Telemetría en vivo y Pool de Workers POSIX
+    // FASE 3: Despliegue de Telemetría CSV y Pool de Workers POSIX (UCA)
     // ========================================================================
     telemetry_t telemetry;
     telemetry_init(&telemetry);
+
+    const char *csv_path = getenv("CSV_PATH");
+    const char *arch_env = getenv("BENCHMARK_ARCH");
+    const char *mem_env  = getenv("BENCHMARK_MEM_MB");
+    const char *dur_env  = getenv("BENCHMARK_DURATION");
+
+    int mem_limit_mb = (mem_env && atoi(mem_env) > 0) ? atoi(mem_env) : 0;
+    int max_duration = (dur_env && atoi(dur_env) > 0) ? atoi(dur_env) : 0;
+
+    telemetry_setup_csv(&telemetry,
+                        csv_path,
+                        (arch_env && arch_env[0] != '\0') ? arch_env : "AMD64",
+                        mem_limit_mb);
 
     telemetry_reporter_args_t reporter_args;
     reporter_args.metrics = &telemetry;
@@ -103,6 +117,7 @@ int main(int argc, char *argv[]) {
     pthread_t reporter_thread;
     if (pthread_create(&reporter_thread, NULL, telemetry_reporter_thread, &reporter_args) != 0) {
         perror("pthread_create telemetry reporter");
+        telemetry_close_csv(&telemetry);
         memory_free_static_heap(heap_chunks, cfg.heap_target_mb);
         return EXIT_FAILURE;
     }
@@ -114,28 +129,36 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "[-] Error crítico al iniciar worker pool.\n");
         g_keep_running = 0;
         pthread_join(reporter_thread, NULL);
+        telemetry_close_csv(&telemetry);
         memory_free_static_heap(heap_chunks, cfg.heap_target_mb);
         return EXIT_FAILURE;
     }
 
-    // Esperar hasta recibir señal SIGINT/SIGTERM
+    // Esperar hasta cumplir BENCHMARK_DURATION segundos o recibir señal SIGINT/SIGTERM
+    int elapsed_s = 0;
     while (g_keep_running) {
         sleep(1);
+        elapsed_s++;
+        if (max_duration > 0 && elapsed_s >= max_duration) {
+            g_keep_running = 0;
+            break;
+        }
     }
 
     // ========================================================================
-    // FINALIZACIÓN CONTROLADA: Detención, unión de hilos y liberación de recursos
+    // FINALIZACIÓN CONTROLADA: Detención, unión de hilos y cierre de CSV
     // ========================================================================
-    printf("\n[!] Finalizando test de C y liberando memoria manualmente...\n");
+    printf("\n[!] Finalizando test de C y cerrando registros...\n");
 
     time_t end_time = time(NULL);
     double duration = difftime(end_time, start_time);
 
     worker_pool_wait_and_stop(&pool);
     pthread_join(reporter_thread, NULL);
+    telemetry_close_csv(&telemetry);
     memory_free_static_heap(heap_chunks, cfg.heap_target_mb);
 
-    // Emisión del informe final con métricas consolidadas
+    // Emisión del informe final con las 3 métricas consolidadas
     telemetry_print_final_summary(&telemetry, cfg.heap_target_mb, cfg.simulated_slots, idle_rss, duration);
 
     printf("[+] Prueba de C finalizada limpiamente.\n");
