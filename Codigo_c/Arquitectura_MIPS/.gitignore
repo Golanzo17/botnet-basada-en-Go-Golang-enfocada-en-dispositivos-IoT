@@ -1,0 +1,8 @@
+# Binarios compilados (ignorados por git)
+obj/
+bin/
+
+# Archivo de resultados (se genera en runtime)
+benchmark_resultado.txt
+host/
+out/
