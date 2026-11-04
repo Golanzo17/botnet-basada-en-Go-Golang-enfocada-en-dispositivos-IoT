@@ -8,27 +8,20 @@ MEM_LIMIT_RAW="${2:-64m}"
 DURACION="${3:-15}"
 
 CONTAINER_NAME="bench_runner"
-DESKTOP_PATH="$HOME/Escritorio"
+# Obtener el directorio donde está alojado el script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBFOLDER="${BINARIO}-${MEM_LIMIT_RAW}"
-BASE_DIR="${DESKTOP_PATH}/BenchmarksGo/${SUBFOLDER}"
+BASE_DIR="${SCRIPT_DIR}/BenchmarksGo/${SUBFOLDER}"
 
 # Iniciar servidor mock en segundo plano en el puerto 9090
 nc -l -k 9090 > /dev/null 2>&1 &
 NC_PID=$!
 
-# Asegurar que netcat se cierre al terminar o cancelar la prueba
+# Asegurar que netcat y el contenedor se cierren al terminar o cancelar la prueba
 cleanup() {
     echo -e "\n[!] Deteniendo contenedor y guardando log parcial..."
     sudo docker stop "$CONTAINER_NAME" > /dev/null 2>&1
     kill -9 $NC_PID 2>/dev/null
-    rm -f uca_stats.txt 2>/dev/null
-}
-trap cleanup SIGINT SIGTERM EXIT
-
-# Función de limpieza en caso de interrupción (Ctrl+C)
-cleanup() {
-    echo -e "\n[!] Deteniendo contenedor y guardando log parcial..."
-    sudo docker stop "$CONTAINER_NAME" > /dev/null 2>&1
     rm -f uca_stats.txt 2>/dev/null
 }
 trap cleanup SIGINT SIGTERM EXIT
