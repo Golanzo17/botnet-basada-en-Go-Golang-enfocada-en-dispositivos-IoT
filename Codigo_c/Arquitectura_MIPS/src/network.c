@@ -228,23 +228,44 @@ void net_slot_reset(NetPool *pool, Slot *slot)
 }
 
 /**
- * net_slot_send() — Envía un payload SHA-256 hexadecimal.
- *
- * Genera una semilla con clock_gettime + slot_id, calcula SHA-256,
- * y envía los 64 bytes hex + '\n' al socket conectado.
+ * net_slot_send() — Ejecuta el trabajo sintético homólogo a AMD64/ARMV7/Go
+ * (asignación dinámica en heap de 4-8 KB + 250 iteraciones SHA-256) y envía
+ * el payload estándar al servidor mock.
  */
 int net_slot_send(Slot *slot)
 {
     if (slot->fd < 0 || slot->state != SLOT_CONNECTED) return -1;
 
+    /* A. Asignación y liberación dinámica manual (4096..8191 bytes) */
     uint8_t seed[32];
     make_seed(slot->id, seed, sizeof(seed));
+    size_t buffer_size = 4096 + ((size_t)seed[0] << 4) + (size_t)(seed[1] & 0x0F);
+    if (buffer_size > 8191) buffer_size = 8191;
 
+    uint8_t *dynamic_buf = (uint8_t *)malloc(buffer_size);
     char hexbuf[65];
-    sha256_hex(seed, sizeof(seed), hexbuf);
+    if (dynamic_buf) {
+        for (size_t b = 0; b < buffer_size; b++) {
+            dynamic_buf[b] = (uint8_t)((slot->id + b) % 256);
+        }
+        sha256_hex(dynamic_buf, buffer_size, hexbuf);
+        free(dynamic_buf);
+        atomic_fetch_add(&g_metrics.total_frees, 1L);
+    }
 
-    char payload[PAYLOAD_SIZE];
-    int plen = snprintf(payload, sizeof(payload), "%s\n", hexbuf);
+    /* B. Preparar payload idéntico a AMD64, ARMV7 y Go (46-48 bytes) */
+    char payload[128];
+    int plen = snprintf(payload, sizeof(payload),
+                        "synthetic_payload_signature_data_block_worker_%u", slot->id);
+    if (plen < 0 || (size_t)plen >= sizeof(payload)) {
+        plen = (int)sizeof(payload) - 1;
+        payload[plen] = '\0';
+    }
+
+    /* C. Cómputo intensivo de CPU: 250 iteraciones de SHA-256 por ciclo */
+    for (int k = 0; k < 250; k++) {
+        sha256_hex((const uint8_t *)payload, (size_t)plen, hexbuf);
+    }
 
     ssize_t sent = send(slot->fd, payload, (size_t)plen, MSG_NOSIGNAL);
     if (sent > 0) {
@@ -308,18 +329,14 @@ int net_pool_tick(NetPool *pool, int timeout_ms)
         }
 
         if (slot->state == SLOT_CONNECTED && (ev & EPOLLIN)) {
-            /* Leer respuesta del servidor mock */
+            /* Leer respuesta ACK_OK del servidor mock y cerrar el ciclo del slot */
             char buf[BUFFER_SIZE];
             ssize_t recv_bytes = recv(slot->fd, buf, sizeof(buf) - 1, 0);
 
-            if (recv_bytes <= 0) {
-                /* Servidor cerró la conexión: reconectar */
-                net_slot_reset(pool, slot);
-            } else {
+            if (recv_bytes > 0) {
                 atomic_fetch_add(&g_metrics.total_bytes_recv, (long)recv_bytes);
-                /* Enviar otro payload */
-                net_slot_send(slot);
             }
+            net_slot_reset(pool, slot);
         }
     }
 

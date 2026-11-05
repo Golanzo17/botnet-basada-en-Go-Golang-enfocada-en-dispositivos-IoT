@@ -48,7 +48,8 @@ volatile int g_running = 1;
  * Crea su propio NetPool con los slots asignados, luego corre el loop:
  *   1. Conectar slots libres.
  *   2. Llamar net_pool_tick() para procesar eventos epoll.
- *   3. Repetir hasta g_running == 0.
+ *   3. Pausa de ciclo homóloga (1 ms = 1000 us) igual que AMD64, ARMV7 y Go.
+ *   4. Repetir hasta g_running == 0.
  */
 static void *worker_thread(void *arg)
 {
@@ -84,8 +85,9 @@ static void *worker_thread(void *arg)
             }
         }
 
-        /* Fase 2: procesar eventos epoll (100ms timeout) */
-        net_pool_tick(pool, 100);
+        /* Fase 2: procesar eventos epoll y aplicar pausa de ciclo (1 ms) */
+        net_pool_tick(pool, 10);
+        usleep(1000);
     }
 
     /* Limpieza: destruir el pool al salir */
@@ -164,4 +166,3 @@ void worker_pool_join(WorkerPool *pool)
     mem_free(pool->threads);
     mem_free(pool);
 }
-

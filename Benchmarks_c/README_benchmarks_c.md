@@ -89,16 +89,17 @@ REPOSITORIO/
 │
 ├── Benchmarks_c/                         # Directorio principal de resultados en C
 │   ├── AMD64_32mb/
-│   │   ├── AMD64_32mb_log_num_1.csv
-│   │   └── AMD64_32mb_log_num_2.csv
 │   ├── AMD64_64mb/
 │   ├── AMD64_128mb/
+│   ├── AMD64_256mb/
 │   ├── ARMV7_32mb/
 │   ├── ARMV7_64mb/
 │   ├── ARMV7_128mb/
+│   ├── ARMV7_256mb/
 │   ├── MIPS_32mb/
 │   ├── MIPS_64mb/
 │   ├── MIPS_128mb/
+│   ├── MIPS_256mb/
 │   └── README_benchmarks_c.md            # Esta documentación
 │
 ├── Codigo_c/                             # Implementaciones modulares en C por arquitectura
@@ -256,4 +257,26 @@ Todas las ejecuciones mantienen constantes los parámetros metodológicos:
    Cuando las pruebas de `ARMV7` y `MIPS` se ejecutan sobre un procesador anfitrión `x86_64`, Docker utiliza emulación en espacio de usuario (`qemu-arm-static` / `qemu-mips-static` vía `binfmt_misc`). La traducción dinámica de instrucciones de QEMU introduce una sobrecarga adicional tanto en memoria RSS (el propio intérprete QEMU reside en el espacio de memoria del contenedor) como en ciclos de CPU respecto a un procesador físico nativo ARMv7 o MIPS. Por ello, los resultados de `ARMV7` y `MIPS` obtenidos bajo emulación deben analizarse reconociendo explícitamente la capa de traducción QEMU y no como equivalentes directos a silicio nativo.
 3. **Granularidad Temporal y Sobrecarga de Contenedores**:
    El muestreo periódico de 1 segundo captura la evolución macroscópica de RAM, red y UCA con impacto despreciable sobre el rendimiento, aunque picos transitorios de sub-milisegundos entre un `malloc()` y su `free()` inmediato ocurren a mayor frecuencia que el intervalo de muestreo.
+
+---
+
+## I. Resumen Empírico de Resultados en C (Carga Unificada)
+
+La siguiente tabla resume las métricas obtenidas para las 12 combinaciones (`AMD64`, `ARMV7` y `MIPS` × `32`, `64`, `128` y `256` MB) con carga por ciclo unificada (`malloc(4096..8191)` + `free`, 250 rondas SHA-256, payload de 48 B hacia `servidor_mock:9090` y pausa de `1 ms` por ciclo bajo `--cpus="1.0"`):
+
+| Arquitectura | Límite RAM | Muestras (`N`) | RAM Media ± DE (`MB`) | RAM Pico (`MB`) | Red RX (`MB`) | Red TX (`MB`) | Red Total (`MB`) | UCA Media (Máx) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **AMD64** *(nativo)* | **32 MB** | 25 | 7.94 ± 0.58 | 9.17 | 21.4509 | 24.6183 | 46.0692 | 28.3 (64) |
+| **AMD64** *(nativo)* | **64 MB** | 25 | 9.32 ± 1.41 | 12.23 | 34.5804 | 39.6200 | 74.2004 | 27.2 (64) |
+| **AMD64** *(nativo)* | **128 MB** | 25 | 9.04 ± 1.33 | 11.69 | 34.6541 | 39.7405 | 74.3945 | 24.9 (64) |
+| **AMD64** *(nativo)* | **256 MB** | 25 | 8.89 ± 1.34 | 11.15 | 34.3777 | 39.4215 | 73.7992 | 26.1 (64) |
+| **ARMV7** *(QEMU)* | **32 MB** | 25 | 24.20 ± 0.29 | 25.18 | 19.9855 | 31.3970 | 51.3825 | 21.2 (64) |
+| **ARMV7** *(QEMU)* | **64 MB** | 25 | 21.72 ± 0.01 | 21.73 | 20.0076 | 31.2244 | 51.2320 | 24.7 (57) |
+| **ARMV7** *(QEMU)* | **128 MB** | 25 | 21.73 ± 0.01 | 21.73 | 20.2441 | 31.7485 | 51.9926 | 22.6 (64) |
+| **ARMV7** *(QEMU)* | **256 MB** | 25 | 21.73 ± 0.01 | 21.73 | 20.3123 | 31.8549 | 52.1672 | 26.2 (64) |
+| **MIPS** *(QEMU)* | **32 MB** | 25 | 12.20 ± 0.05 | 12.28 | 3.1696 | 3.9128 | 7.0824 | 54.8 (64) |
+| **MIPS** *(QEMU)* | **64 MB** | 25 | 10.44 ± 0.02 | 10.45 | 3.4606 | 4.2591 | 7.7197 | 54.5 (64) |
+| **MIPS** *(QEMU)* | **128 MB** | 25 | 10.54 ± 0.02 | 10.54 | 3.4997 | 4.3235 | 7.8233 | 57.2 (64) |
+| **MIPS** *(QEMU)* | **256 MB** | 25 | 10.50 ± 0.02 | 10.51 | 3.4027 | 4.2036 | 7.6063 | 54.8 (64) |
+
 

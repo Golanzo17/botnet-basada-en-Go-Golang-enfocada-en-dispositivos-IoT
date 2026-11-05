@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 )
 
 type Config struct {
+	TargetHost       string
 	BasePort         string
 	NumGoroutines    int
 	HeapTargetMB     int
@@ -32,6 +34,7 @@ type Telemetry struct {
 	FailedDials      int64
 	SynSentDials     int64
 	BytesTransferred int64
+	BytesReceived    int64
 	GCRuns           uint32
 }
 
@@ -39,6 +42,22 @@ var (
 	metrics        Telemetry
 	heapMemoryHold [][]byte
 )
+
+func envIntOrDefault(key string, def int) int {
+	if val := os.Getenv(key); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return def
+}
+
+func envStrOrDefault(key, def string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return def
+}
 
 func workerNode(ctx context.Context, wg *sync.WaitGroup, id int, cfg Config) {
 	defer wg.Done()
@@ -78,7 +97,7 @@ func workerNode(ctx context.Context, wg *sync.WaitGroup, id int, cfg Config) {
 				targetIP = "192.0.2.1:9999"
 				atomic.AddInt64(&metrics.SynSentDials, 1)
 			} else {
-				targetIP = "127.0.0.1:" + cfg.BasePort
+				targetIP = cfg.TargetHost + ":" + cfg.BasePort
 			}
 
 			conn, err := dialer.DialContext(ctx, "tcp", targetIP)
@@ -93,7 +112,10 @@ func workerNode(ctx context.Context, wg *sync.WaitGroup, id int, cfg Config) {
 				if err == nil {
 					atomic.AddInt64(&metrics.BytesTransferred, int64(n))
 					buf := make([]byte, 16)
-					_, _ = conn.Read(buf)
+					rBytes, rErr := conn.Read(buf)
+					if rBytes > 0 && rErr == nil {
+						atomic.AddInt64(&metrics.BytesReceived, int64(rBytes))
+					}
 				}
 
 				conn.Close()
@@ -124,13 +146,14 @@ func allocateStaticHeap(targetMB int) {
 
 func main() {
 	cfg := Config{
-		BasePort:         "9090",
-		NumGoroutines:    4000,
-		HeapTargetMB:     2,
-		CPULoopWork:      250,
+		TargetHost:       envStrOrDefault("BENCHMARK_HOST", "127.0.0.1"),
+		BasePort:         envStrOrDefault("BENCHMARK_PORT", "9090"),
+		NumGoroutines:    envIntOrDefault("BENCHMARK_UCA", 64),
+		HeapTargetMB:     envIntOrDefault("BENCHMARK_HEAP_MB", 2),
+		CPULoopWork:      envIntOrDefault("BENCHMARK_CPU_WORK", 250),
 		DialTimeout:      150 * time.Millisecond,
 		WorkerDelay:      1 * time.Millisecond,
-		UnreachableRatio: 30,
+		UnreachableRatio: envIntOrDefault("BENCHMARK_UNREACHABLE_RATIO", 0),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -152,7 +175,7 @@ func main() {
 		go workerNode(ctx, &wg, i, cfg)
 	}
 
-	// Telemetría exportada cada 100ms
+	// Telemetría exportada atómicamente cada 100ms
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -163,12 +186,15 @@ func main() {
 				return
 			case <-ticker.C:
 				activeWorkers := atomic.LoadInt64(&metrics.ActiveWorkers)
-				totalBytes := atomic.LoadInt64(&metrics.BytesTransferred)
-				netTxMB := float64(totalBytes) / (1024.0 * 1024.0)
+				totalBytesTx := atomic.LoadInt64(&metrics.BytesTransferred)
+				totalBytesRx := atomic.LoadInt64(&metrics.BytesReceived)
+				netTxMB := float64(totalBytesTx) / (1024.0 * 1024.0)
+				netRxMB := float64(totalBytesRx) / (1024.0 * 1024.0)
 
-				// Escribir UCA y Net TX directamente en el archivo compartido
-				telemetryStr := fmt.Sprintf("%d|%.4f|0.0000", activeWorkers, netTxMB)
-				_ = os.WriteFile("uca_stats.txt", []byte(telemetryStr), 0644)
+				telemetryStr := fmt.Sprintf("%d|%.4f|%.4f", activeWorkers, netTxMB, netRxMB)
+				if err := os.WriteFile("uca_stats.txt.tmp", []byte(telemetryStr), 0644); err == nil {
+					_ = os.Rename("uca_stats.txt.tmp", "uca_stats.txt")
+				}
 			}
 		}
 	}()

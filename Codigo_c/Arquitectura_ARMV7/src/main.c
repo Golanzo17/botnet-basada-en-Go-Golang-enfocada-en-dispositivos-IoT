@@ -134,12 +134,12 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // Esperar hasta cumplir BENCHMARK_DURATION segundos o recibir señal SIGINT/SIGTERM
+    // Esperar hasta registrar exactamente max_duration muestras en el CSV
     int elapsed_s = 0;
     while (g_keep_running) {
-        sleep(1);
+        usleep(200000);
         elapsed_s++;
-        if (max_duration > 0 && elapsed_s >= max_duration) {
+        if (max_duration > 0 && (telemetry.sample_count >= max_duration || elapsed_s >= (max_duration + 8) * 5)) {
             g_keep_running = 0;
             break;
         }
